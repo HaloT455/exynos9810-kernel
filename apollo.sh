@@ -640,6 +640,7 @@ if [ "$CR_TARGET" = "1" ]; then # Always must run ONCE during BUILD_ALL otherwis
 	echo " Clean Out directory "
 	echo " "
 	rm -rf $CR_OUTZIP
+	mkdir -p $CR_OUT
 	cp -r $CR_ZIP $CR_OUTZIP
 	echo " "
 	echo " Copying $CR_BASE_KERNEL "
