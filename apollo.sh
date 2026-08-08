@@ -605,6 +605,9 @@ echo "----------------------------------------------"
 
 CR_MKZIP="y"
 CR_CLEAN="n"
+CR_COMPILER=${DS_ACK_COMPILER:-4}
+CR_DATE=${DS_ACK_BUILD_DATE:-08.05.2026}
+CR_ZIP_SUFFIX=
 
 echo "=== [0/4] Initial Workspace Cleanup ==="
 rm -r -f $CR_DTB
@@ -623,24 +626,28 @@ echo "----------------------------------------------"
 echo "=== [1/4] Building Enforcing - No KSU ==="
 CR_SELINUX=2
 CR_KSU="n"
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-OneUI7-erofs-dtb
 BUILD_ALL
 
 # 2. Enforcing, KSU
 echo "=== [2/4] Building Enforcing - KernelSU ==="
 CR_SELINUX=2
 CR_KSU="y"
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU-OneUI7-erofs-dtb
 BUILD_ALL
 
 # 3. Permissive, No KSU
 echo "=== [3/4] Building Permissive - No KSU ==="
 CR_SELINUX=1
 CR_KSU="n"
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-OneUI7-erofs-dtb
 BUILD_ALL
 
 # 4. Permissive, KSU
 echo "=== [4/4] Building Permissive - KernelSU ==="
 CR_SELINUX=1
 CR_KSU="y"
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-KernelSU-OneUI7-erofs-dtb
 BUILD_ALL
 
 echo "----------------------------------------------"
@@ -743,6 +750,10 @@ fi
 }
 
 # Main Menu
+if [ "$1" = "--all-releases" ]; then
+BUILD_GITHUB_RELEASE
+exit $?
+fi
 if [ "$1" = "--erofs-release" ]; then
 BUILD_EROFS_RELEASE
 exit $?
