@@ -304,7 +304,7 @@ BUILD_GENERATE_CONFIG()
   echo " Apollo	- $CR_CONFIG_APOLLO "
   cat $CR_DEFCONFIG/$CR_CONFIG_APOLLO >> $CR_DEFCONFIG/tmp_defconfig
   # DS-ACK devices boot system, vendor and odm from compressed EROFS.
-  for config_option in EROFS_FS EROFS_FS_XATTR EROFS_FS_POSIX_ACL EROFS_FS_SECURITY EROFS_FS_ZIP RD_LZ4; do
+  for config_option in EROFS_FS EROFS_FS_XATTR EROFS_FS_POSIX_ACL EROFS_FS_SECURITY EROFS_FS_ZIP RD_LZ4 EXTREMEROM_WORKAROUNDS ONEUI7_WORKAROUND; do
     if ! grep -q "^CONFIG_${config_option}=y$" $CR_DEFCONFIG/tmp_defconfig; then
       sed -i -E "s/^# CONFIG_${config_option} is not set$/CONFIG_${config_option}=y/; s/^CONFIG_${config_option}=.*/CONFIG_${config_option}=y/" $CR_DEFCONFIG/tmp_defconfig
       if ! grep -q "^CONFIG_${config_option}=y$" $CR_DEFCONFIG/tmp_defconfig; then
