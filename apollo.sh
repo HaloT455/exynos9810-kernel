@@ -16,9 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # Main Dir
-CR_DIR=$(pwd)
+CR_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # Compiler Dir
-CR_TC=../compiler
+CR_TC=$CR_DIR/../compiler
 # Target ARCH
 CR_ARCH=arm64
 # Define proper arch and dir for dts files
@@ -48,7 +48,9 @@ CR_JOBS=$(nproc --all)
 CR_ANDROID=q
 CR_PLATFORM=13.0.0
 # Current Date
-CR_DATE=$(date +%d.%m.%Y)
+CR_DATE=${DS_ACK_BUILD_DATE:-$(date +%d.%m.%Y)}
+CR_ZIP_SUFFIX=${DS_ACK_ZIP_SUFFIX:-}
+CR_ZIP_NAME=${DS_ACK_ZIP_NAME:-}
 # General init
 export KSU_MANUAL_HOOK=y
 export CONFIG_KSU_MANUAL_HOOK=y
@@ -109,7 +111,7 @@ CR_CLANG=$CR_TC/clang-18.0.1-r522817
 fi
 if [ $CR_COMPILER = "4" ]; then
 CR_CLANG_URL=https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz
-CR_CLANG=$CR_TC/clang-20.0.0-r547379
+CR_CLANG=${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}
 fi
 if [ $CR_COMPILER = "5" ]; then
 CR_CLANG_URL=https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/05012024/neutron-clang-05012024.tar.zst
@@ -301,6 +303,15 @@ BUILD_GENERATE_CONFIG()
   # Apollo Custom defconfig
   echo " Apollo	- $CR_CONFIG_APOLLO "
   cat $CR_DEFCONFIG/$CR_CONFIG_APOLLO >> $CR_DEFCONFIG/tmp_defconfig
+  # DS-ACK devices boot system, vendor and odm from compressed EROFS.
+  for config_option in EROFS_FS EROFS_FS_XATTR EROFS_FS_POSIX_ACL EROFS_FS_SECURITY EROFS_FS_ZIP RD_LZ4; do
+    if ! grep -q "^CONFIG_${config_option}=y$" $CR_DEFCONFIG/tmp_defconfig; then
+      sed -i -E "s/^# CONFIG_${config_option} is not set$/CONFIG_${config_option}=y/; s/^CONFIG_${config_option}=.*/CONFIG_${config_option}=y/" $CR_DEFCONFIG/tmp_defconfig
+      if ! grep -q "^CONFIG_${config_option}=y$" $CR_DEFCONFIG/tmp_defconfig; then
+        echo "CONFIG_${config_option}=y" >> $CR_DEFCONFIG/tmp_defconfig
+      fi
+    fi
+  done
   # Selinux Never Enforce all targets
   if [ $CR_SELINUX = "1" ]; then
     echo " Building SELinux Permissive Kernel"
@@ -389,6 +400,10 @@ BUILD_DTB()
         echo " Abort "
 	else
         echo "DTB Compiled at $CR_DTB"
+	fi
+	if ! strings -a "$CR_DTB" | grep -q "erofs"; then
+		echo "ERROR: generated DTB does not contain an EROFS fstab"
+		exit 1
 	fi
 	rm -rf $CR_DTS/.*.tmp
 	rm -rf $CR_DTS/.*.cmd
@@ -528,6 +543,36 @@ BUILD
 export -n "CONFIG_MACH_EXYNOS9810_CROWNLTE_KOR"
 }
 
+# Reproducible DS-ACK V1.12 EROFS release build.
+BUILD_EROFS_RELEASE(){
+echo "----------------------------------------------"
+echo " DS-ACK V1.12 EROFS release build "
+echo "----------------------------------------------"
+
+CR_DATE=${DS_ACK_BUILD_DATE:-08.05.2026}
+CR_COMPILER=${DS_ACK_COMPILER:-4}
+CR_MKZIP=y
+CR_CLEAN=${DS_ACK_CLEAN:-n}
+CR_KSU=y
+CR_ZIP_SUFFIX=
+
+if [ ! -x "${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}/bin/clang" ]; then
+	echo "Missing Google Clang 20 at ${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}"
+	echo "Install the compiler there before using --erofs-release."
+	return 1
+fi
+
+CR_SELINUX=2
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU-OneUI7-erofs-dtb
+echo "Building enforcing KernelSU profile"
+BUILD_ALL
+
+CR_SELINUX=1
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-KernelSU-OneUI7-erofs-dtb
+echo "Building permissive KernelSU profile"
+BUILD_ALL
+}
+
 # Preconfigured Debug build
 BUILD_DEBUG(){
 echo "----------------------------------------------"
@@ -640,7 +685,7 @@ if [ "$CR_TARGET" = "1" ]; then # Always must run ONCE during BUILD_ALL otherwis
 	echo " Clean Out directory "
 	echo " "
 	rm -rf $CR_OUTZIP
-	mkdir -p $CR_OUT
+	mkdir -p $CR_OUT $CR_PRODUCT
 	cp -r $CR_ZIP $CR_OUTZIP
 	echo " "
 	echo " Copying $CR_BASE_KERNEL "
@@ -682,21 +727,26 @@ fi
 if [ "$CR_TARGET" = "6" ]; then # Final kernel build
 	echo " Generating ZIP Package for $CR_NAME-$CR_VERSION-$CR_DATE"
 	sed -i "s/fkv/$zver/g" $CR_OUTZIP/META-INF/com/google/android/update-binary
-	cd $CR_OUTZIP && zip -r $CR_PRODUCT/$zver.zip * && cd $CR_DIR
-	du -k "$CR_PRODUCT/$zver.zip" | cut -f1 >sizdz
+	zip_name=${CR_ZIP_NAME:-$zver$CR_ZIP_SUFFIX}
+	cd $CR_OUTZIP && zip -r "$CR_PRODUCT/$zip_name.zip" * && cd $CR_DIR
+	du -k "$CR_PRODUCT/$zip_name.zip" | cut -f1 >sizdz
 	sizdz=$(head -n 1 sizdz)
 	rm -rf sizdz
 	echo " "
 	echo "----------------------------------------------"
 	echo "$CR_NAME kernel build finished."
 	echo "Compiled Package Size = $sizdz Kb"
-	echo "$zver.zip Ready"
+	echo "$zip_name.zip Ready"
 	echo "Press Any key to end the script"
 	echo "----------------------------------------------"
 fi
 }
 
 # Main Menu
+if [ "$1" = "--erofs-release" ]; then
+BUILD_EROFS_RELEASE
+exit $?
+fi
 clear
 echo "----------------------------------------------"
 echo "$CR_NAME $CR_VERSION Build Script $CR_DATE"
