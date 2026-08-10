@@ -1,0 +1,8 @@
+# DS-ACK V1.12 Exynos9810 EROFS release archives
+# Download from Google Drive: https://drive.google.com/drive/folders/1M3treF2xQEiIdIt4XQtWLgpqhQBPJi6-
+# (files are too large for GitHub; SHA256 verified against the archives above)
+
+243e08f706534cb3299cef24bdad874f27d0ffb0d2e5e9baee5d4be4fcffedba  DS-ACK-V1.12-08.05.2026-Enforcing-KernelSU-OneUI7-erofs-dtb.zip
+ca9f79b4983d3cf495207f302f04e9ff2f188492056ae99aa1360d9991588934  DS-ACK-V1.12-08.05.2026-Enforcing-OneUI7-erofs-dtb.zip
+3893ea3146c34192222ab6ea42056d6fa4bd5079b699224842fa01ad29e184c6  DS-ACK-V1.12-08.05.2026-Permissive-KernelSU-OneUI7-erofs-dtb.zip
+77a84de4e03862da9d24834eb4b5ea5efcf547ca973a345e88b1ff7a5436d5c9  DS-ACK-V1.12-08.05.2026-Permissive-OneUI7-erofs-dtb.zip
