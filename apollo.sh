@@ -43,7 +43,7 @@ CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 CR_VERSION=V1.12
 CR_NAME=DS-ACK
 # Thread count
-CR_JOBS=$(nproc --all)
+CR_JOBS=${DS_ACK_JOBS:-6}
 # Target Android version
 CR_ANDROID=q
 CR_PLATFORM=13.0.0
@@ -372,13 +372,18 @@ BUILD_ZIMAGE()
 	echo "Building zImage for $CR_VARIANT"
 	export LOCALVERSION=-$CR_IMAGE_NAME
 	echo "Make $CR_CONFIG"
-	$compile $CR_CONFIG
+	if ! $compile "$CR_CONFIG"; then
+		echo "ERROR: failed to generate $CR_VARIANT config"
+		return 1
+	fi
 	echo "Make Kernel with $CR_COMPILER_ARG"
-	$compile -j$CR_JOBS
-	if [ ! -e $CR_KERNEL ]; then
-	exit 0;
-	echo "Image Failed to Compile"
-	echo " Abort "
+	if ! $compile -j"$CR_JOBS"; then
+		echo "ERROR: $CR_VARIANT kernel compilation failed"
+		return 1
+	fi
+	if [ ! -s "$CR_KERNEL" ]; then
+		echo "ERROR: kernel Image was not produced for $CR_VARIANT"
+		return 1
 	fi
 	du -k "$CR_KERNEL" | cut -f1 >sizT
 	sizT=$(head -n 1 sizT)
@@ -394,17 +399,13 @@ BUILD_DTB()
 	echo " "
 	echo "Checking DTB for $CR_VARIANT"
 	# This source does compiles dtbs while doing Image
-	if [ ! -e $CR_DTB ]; then
-        exit 0;
-        echo "DTB Failed to Compile"
-        echo " Abort "
+	if [ ! -s "$CR_DTB" ]; then
+		echo "ERROR: DTB was not produced for $CR_VARIANT"
+		return 1
 	else
         echo "DTB Compiled at $CR_DTB"
 	fi
-	if ! strings -a "$CR_DTB" | grep -q "erofs"; then
-		echo "ERROR: generated DTB does not contain an EROFS fstab"
-		exit 1
-	fi
+	python3 "$CR_DIR/tools/validate_dtb.py" "$CR_DTB" "$CR_VARIANT" || return 1
 	rm -rf $CR_DTS/.*.tmp
 	rm -rf $CR_DTS/.*.cmd
 	rm -rf $CR_DTS/*.dtb
@@ -427,11 +428,13 @@ PACK_BOOT_IMG()
 	mv $CR_KERNEL $CR_AIK/split_img/boot.img-zImage
 	mv $CR_DTB $CR_AIK/split_img/boot.img-dtb
 	# Create boot.img
-	$CR_AIK/repackimg.sh
-	if [ ! -e $CR_AIK/image-new.img ]; then
-        exit 0;
-        echo "Boot Image Failed to pack"
-        echo " Abort "
+	if ! $CR_AIK/repackimg.sh; then
+		echo "ERROR: boot image repack failed for $CR_VARIANT"
+		return 1
+	fi
+	if [ ! -s "$CR_AIK/image-new.img" ]; then
+		echo "ERROR: boot image was not produced for $CR_VARIANT"
+		return 1
 	fi
 	# Remove red warning at boot
 	echo -n "SEANDROIDENFORCE" >> $CR_AIK/image-new.img
@@ -502,19 +505,19 @@ BUILD()
 		export "CONFIG_MACH_EXYNOS9810_CROWNLTE_KOR=y"
 	fi	
 	CR_CONFIG=$CR_CONFIG_9810
-	BUILD_COMPILER
-	BUILD_CLEAN
-	BUILD_IMAGE_NAME
-	BUILD_GENERATE_CONFIG
+	BUILD_COMPILER || return 1
+	BUILD_CLEAN || return 1
+	BUILD_IMAGE_NAME || return 1
+	BUILD_GENERATE_CONFIG || return 1
 	# Print build options
 	BUILD_OPTIONS
-	BUILD_ZIMAGE
-	BUILD_DTB
+	BUILD_ZIMAGE || return 1
+	BUILD_DTB || return 1
 	if [ "$CR_MKZIP" = "y" ]; then # Allow Zip Package for mass compile only
 	echo " Start Build ZIP Process "
-	PACK_KERNEL_ZIP
+	PACK_KERNEL_ZIP || return 1
 	else
-	PACK_BOOT_IMG
+	PACK_BOOT_IMG || return 1
 	BUILD_OUT
 	fi
 }
@@ -524,22 +527,22 @@ BUILD_ALL(){
 echo "----------------------------------------------"
 echo " Compiling ALL targets "
 CR_TARGET=1
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_STARLTE_EUR_OPEN"
 CR_TARGET=2
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_STAR2LTE_EUR_OPEN"
 CR_TARGET=3
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_CROWNLTE_EUR_OPEN"
 CR_TARGET=4
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_STARLTE_KOR"
 CR_TARGET=5
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_STAR2LTE_KOR"
 CR_TARGET=6
-BUILD
+BUILD || return 1
 export -n "CONFIG_MACH_EXYNOS9810_CROWNLTE_KOR"
 }
 
@@ -565,12 +568,12 @@ fi
 CR_SELINUX=2
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU-OneUI7-erofs-dtb
 echo "Building enforcing KernelSU profile"
-BUILD_ALL
+BUILD_ALL || return 1
 
 CR_SELINUX=1
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-KernelSU-OneUI7-erofs-dtb
 echo "Building permissive KernelSU profile"
-BUILD_ALL
+BUILD_ALL || return 1
 }
 
 # Preconfigured Debug build
@@ -627,28 +630,28 @@ echo "=== [1/4] Building Enforcing - No KSU ==="
 CR_SELINUX=2
 CR_KSU="n"
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-OneUI7-erofs-dtb
-BUILD_ALL
+BUILD_ALL || exit 1
 
 # 2. Enforcing, KSU
 echo "=== [2/4] Building Enforcing - KernelSU ==="
 CR_SELINUX=2
 CR_KSU="y"
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU-OneUI7-erofs-dtb
-BUILD_ALL
+BUILD_ALL || exit 1
 
 # 3. Permissive, No KSU
 echo "=== [3/4] Building Permissive - No KSU ==="
 CR_SELINUX=1
 CR_KSU="n"
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-OneUI7-erofs-dtb
-BUILD_ALL
+BUILD_ALL || exit 1
 
 # 4. Permissive, KSU
 echo "=== [4/4] Building Permissive - KernelSU ==="
 CR_SELINUX=1
 CR_KSU="y"
 CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Permissive-KernelSU-OneUI7-erofs-dtb
-BUILD_ALL
+BUILD_ALL || exit 1
 
 echo "----------------------------------------------"
 echo " GitHub Release Builds Completed Successfully! "
@@ -698,10 +701,9 @@ if [ "$CR_TARGET" = "1" ]; then # Always must run ONCE during BUILD_ALL otherwis
 	echo " Copying $CR_BASE_KERNEL "
 	echo " Copying $CR_BASE_DTB "
 	echo " "
-	if [ ! -e $CR_KERNEL ] || [ ! -e $CR_DTB ]; then
-        exit 0;
-        echo " Kernel not found!"
-        echo " Abort "
+	if [ ! -s "$CR_KERNEL" ] || [ ! -s "$CR_DTB" ]; then
+		echo "ERROR: base kernel or DTB is missing"
+		return 1
 	else
         cp $CR_KERNEL $CR_BASE_KERNEL
         cp $CR_DTB $CR_BASE_DTB
@@ -715,19 +717,18 @@ if [ ! "$CR_TARGET" = "1" ]; then # Generate patch files for non starlte kernels
 	echo " Generating Patch kernel for $CR_VARIANT "
 	echo " "
 	if [ ! -e $CR_KERNEL ] || [ ! -e $CR_DTB ]; then
-        echo " Kernel not found! "
-        echo " Abort "
-        exit 0;
+		echo "ERROR: kernel or DTB is missing for $CR_VARIANT"
+		return 1
 	else
-		bsdiff $CR_BASE_KERNEL $CR_KERNEL $CR_OUTZIP/floyd/$CR_VARIANT-kernel
+		bsdiff $CR_BASE_KERNEL $CR_KERNEL $CR_OUTZIP/floyd/$CR_VARIANT-kernel || return 1
 		if [ ! -e $CR_OUTZIP/floyd/$CR_VARIANT-kernel ]; then
 			echo "ERROR: bsdiff $CR_BASE_KERNEL $CR_KERNEL $CR_OUTZIP/floyd/$CR_VARIANT-kernel Failed!"
-			exit 0;
+			return 1
 		fi
-		bsdiff $CR_BASE_DTB $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb
-		if [ ! -e $CR_OUTZIP/floyd/$CR_VARIANT-kernel ]; then
-			echo "ERROR: bsdiff $CR_BASE_KERNEL $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb Failed!"
-			exit 0;
+		bsdiff $CR_BASE_DTB $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb || return 1
+		if [ ! -e $CR_OUTZIP/floyd/$CR_VARIANT-dtb ]; then
+			echo "ERROR: bsdiff $CR_BASE_DTB $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb Failed!"
+			return 1
 		fi
 	fi
 fi
@@ -735,7 +736,7 @@ if [ "$CR_TARGET" = "6" ]; then # Final kernel build
 	echo " Generating ZIP Package for $CR_NAME-$CR_VERSION-$CR_DATE"
 	sed -i "s/fkv/$zver/g" $CR_OUTZIP/META-INF/com/google/android/update-binary
 	zip_name=${CR_ZIP_NAME:-$zver$CR_ZIP_SUFFIX}
-	cd $CR_OUTZIP && zip -r "$CR_PRODUCT/$zip_name.zip" * && cd $CR_DIR
+	(cd "$CR_OUTZIP" && zip -q -r "$CR_PRODUCT/$zip_name.zip" *) || return 1
 	du -k "$CR_PRODUCT/$zip_name.zip" | cut -f1 >sizdz
 	sizdz=$(head -n 1 sizdz)
 	rm -rf sizdz
