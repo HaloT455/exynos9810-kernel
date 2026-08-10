@@ -736,6 +736,7 @@ if [ "$CR_TARGET" = "6" ]; then # Final kernel build
 	echo " Generating ZIP Package for $CR_NAME-$CR_VERSION-$CR_DATE"
 	sed -i "s/fkv/$zver/g" $CR_OUTZIP/META-INF/com/google/android/update-binary
 	zip_name=${CR_ZIP_NAME:-$zver$CR_ZIP_SUFFIX}
+	rm -f "$CR_PRODUCT/$zip_name.zip"
 	(cd "$CR_OUTZIP" && zip -q -r "$CR_PRODUCT/$zip_name.zip" *) || return 1
 	du -k "$CR_PRODUCT/$zip_name.zip" | cut -f1 >sizdz
 	sizdz=$(head -n 1 sizdz)
