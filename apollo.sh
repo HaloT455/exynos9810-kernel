@@ -405,6 +405,7 @@ BUILD_DTB()
 	else
         echo "DTB Compiled at $CR_DTB"
 	fi
+	python3 "$CR_DIR/tools/normalize_dtb.py" "$CR_DTB" "$CR_VARIANT" || return 1
 	python3 "$CR_DIR/tools/validate_dtb.py" "$CR_DTB" "$CR_VARIANT" || return 1
 	rm -rf $CR_DTS/.*.tmp
 	rm -rf $CR_DTS/.*.cmd
