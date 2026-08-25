@@ -52,8 +52,6 @@ CR_DATE=${DS_ACK_BUILD_DATE:-$(date +%d.%m.%Y)}
 CR_ZIP_SUFFIX=${DS_ACK_ZIP_SUFFIX:-}
 CR_ZIP_NAME=${DS_ACK_ZIP_NAME:-}
 # General init
-export KSU_MANUAL_HOOK=y
-export CONFIG_KSU_MANUAL_HOOK=y
 export ANDROID_MAJOR_VERSION=$CR_ANDROID
 export PLATFORM_VERSION=$CR_PLATFORM
 export $CR_ARCH
@@ -241,6 +239,37 @@ BUILD_IMAGE_NAME()
     
 }
 
+# Pin the exact KernelSU requested for this release and apply the SUSFS v2.2.0
+# command/UID/SELinux bridge. The patch is idempotent so incremental multi-device
+# builds reuse the already prepared submodule.
+PREPARE_KSU_SUSFS()
+{
+	KSU_PIN=7bd071c11f5a4d22729d73179d149493a6362a26
+	KSU_DIR=$CR_DIR/KernelSU-Next
+	KSU_PATCH=$CR_DIR/patches/kernelsu-32567b-susfs-v2.2.0.patch
+
+	if [ ! -d "$KSU_DIR" ] || [ ! -e "$KSU_DIR/.git" ]; then
+		echo "ERROR: KernelSU submodule is missing. Run git submodule update --init."
+		return 1
+	fi
+	if [ "$(git -C "$KSU_DIR" rev-parse HEAD)" != "$KSU_PIN" ]; then
+		echo "ERROR: KernelSU must be pinned to 32567b ($KSU_PIN)."
+		return 1
+	fi
+	if [ ! -f "$KSU_PATCH" ]; then
+		echo "ERROR: KernelSU SUSFS bridge patch is missing."
+		return 1
+	fi
+
+	if git -C "$KSU_DIR" apply --reverse --check "$KSU_PATCH" >/dev/null 2>&1; then
+		echo " KernelSU 32567b SUSFS bridge already prepared"
+	else
+		git -C "$KSU_DIR" apply --check "$KSU_PATCH" || return 1
+		git -C "$KSU_DIR" apply "$KSU_PATCH" || return 1
+		echo " KernelSU 32567b SUSFS bridge applied"
+	fi
+}
+
 # Build options
 BUILD_OPTIONS()
 {
@@ -321,9 +350,10 @@ BUILD_GENERATE_CONFIG()
   else
     echo " Building SELinux Enforced Kernel"
   fi
-  if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
-    echo " Building KernelSU"
-    echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
+	if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
+	    echo " Building KernelSU"
+	    PREPARE_KSU_SUSFS || return 1
+	    echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
     CR_IMAGE_NAME=$CR_IMAGE_NAME-KSU
     zver=$zver-KernelSU
   else
@@ -577,6 +607,29 @@ echo "Building permissive KernelSU profile"
 BUILD_ALL || return 1
 }
 
+# Reproducible enforcing-only KernelSU 32567b + SUSFS v2.2.0 release.
+BUILD_EROFS_ENFORCING_SUSFS_RELEASE(){
+echo "----------------------------------------------"
+echo " DS-ACK V1.12 KSU 32567b + SUSFS v2.2.0 "
+echo "----------------------------------------------"
+
+CR_DATE=${DS_ACK_BUILD_DATE:-08.25.2026}
+CR_COMPILER=${DS_ACK_COMPILER:-4}
+CR_MKZIP=y
+CR_CLEAN=${DS_ACK_CLEAN:-n}
+CR_KSU=y
+CR_SELINUX=2
+CR_ZIP_SUFFIX=
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-OneUI7-erofs-dtb
+
+if [ ! -x "${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}/bin/clang" ]; then
+	echo "Missing Google Clang 20 at ${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}"
+	return 1
+fi
+
+BUILD_ALL || return 1
+}
+
 # Preconfigured Debug build
 BUILD_DEBUG(){
 echo "----------------------------------------------"
@@ -755,6 +808,10 @@ fi
 # Main Menu
 if [ "$1" = "--all-releases" ]; then
 BUILD_GITHUB_RELEASE
+exit $?
+fi
+if [ "$1" = "--erofs-enforcing-susfs-release" ]; then
+BUILD_EROFS_ENFORCING_SUSFS_RELEASE
 exit $?
 fi
 if [ "$1" = "--erofs-release" ]; then

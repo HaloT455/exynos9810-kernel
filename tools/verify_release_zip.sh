@@ -10,7 +10,7 @@ if [ -z "$ZIP_PATH" ] || [ ! -f "$ZIP_PATH" ]; then
     exit 2
 fi
 
-for tool in unzip bspatch python3; do
+for tool in unzip bspatch python3 strings; do
     command -v "$tool" >/dev/null || {
         echo "Missing required tool: $tool" >&2
         exit 1
@@ -37,6 +37,10 @@ esac
 case "$(basename "$ZIP_PATH")" in
     *KernelSU*) EXPECT_KSU=y ;;
     *) EXPECT_KSU=n ;;
+esac
+case "$(basename "$ZIP_PATH")" in
+    *SUSFS*) EXPECT_SUSFS=y ;;
+    *) EXPECT_SUSFS=n ;;
 esac
 
 for variant in G960F G965F N960F G960N G965N N960N; do
@@ -67,6 +71,21 @@ for variant in G960F G965F N960F G960N G965N N960N; do
         grep -q '^CONFIG_KSU=y$' "$config"
     else
         grep -q '^# CONFIG_KSU is not set$' "$config"
+    fi
+    if [ "$EXPECT_SUSFS" = y ]; then
+        grep -q '^CONFIG_KSU_SUSFS=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_SUS_PATH=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_SUS_MOUNT=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_SUS_KSTAT=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_SUS_MAP=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y$' "$config"
+        grep -q '^CONFIG_KSU_SUSFS_OPEN_REDIRECT=y$' "$config"
+        grep -q '^# CONFIG_KSU_SUSFS_TRY_UMOUNT is not set$' "$config"
+        grep -q '^# CONFIG_KSU_SUSFS_ENABLE_LOG is not set$' "$config"
+        grep -q '^# CONFIG_KSU_SUSFS_SUS_MEMFD is not set$' "$config"
+        strings "$kernel" | grep -qx 'v2.2.0'
+        strings "$kernel" | grep -qx '32567'
     fi
     if [ "$EXPECT_PERMISSIVE" = y ]; then
         grep -q '^CONFIG_ALWAYS_PERMISSIVE=y$' "$config"

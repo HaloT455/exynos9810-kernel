@@ -1,0 +1,81 @@
+name: Build G965N KSU 32567b SUSFS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/g965n-ksu32567b-susfs
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout kernel and pinned KernelSU
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bsdiff binutils curl python3 unzip zip
+
+      - name: Install Google Clang 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain_dir="$GITHUB_WORKSPACE/../compiler/clang-20.0.0-r547379"
+          archive="$RUNNER_TEMP/clang-r547379.tar.gz"
+          mkdir -p "$toolchain_dir"
+          curl --fail --location --retry 5 --retry-delay 5 \
+            'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz' \
+            --output "$archive"
+          tar -xzf "$archive" -C "$toolchain_dir"
+          "$toolchain_dir/bin/clang" --version
+
+      - name: Verify pinned inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = '7bd071c11f5a4d22729d73179d149493a6362a26'
+          grep -q 'CFLAGS_ksu.o += -DKSU_VERSION=32567' KernelSU-Next/kernel/Makefile
+          grep -q '#define SUSFS_VERSION "v2.2.0"' include/linux/susfs.h
+          git -C KernelSU-Next apply --check "$GITHUB_WORKSPACE/patches/kernelsu-32567b-susfs-v2.2.0.patch"
+
+      - name: Build enforcing DS-ACK release
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x apollo.sh tools/verify_release_zip.sh
+          DS_ACK_BUILD_DATE=08.25.2026 DS_ACK_JOBS=4 \
+            ./apollo.sh --erofs-enforcing-susfs-release 2>&1 | tee build-g965n-susfs.log
+
+      - name: Verify KernelSU-SUSFS linkage and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0*.zip' -print -quit)
+          test -n "$zip_path"
+          tools/verify_release_zip.sh "$zip_path"
+          test -f vmlinux
+          nm -n vmlinux | grep -q ' susfs_init$'
+          nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain$'
+          nm -n vmlinux | grep -q ' ksu_handle_sys_reboot$'
+          sha256sum "$zip_path" > Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
+
+      - name: Upload flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: G965N-KSU32567b-SUSFS-v2.2.0-Enforcing
+          path: |
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0*.zip
+            Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
+            build-g965n-susfs.log
+          compression-level: 0
+          retention-days: 14
