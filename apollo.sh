@@ -620,7 +620,7 @@ CR_CLEAN=${DS_ACK_CLEAN:-n}
 CR_KSU=y
 CR_SELINUX=2
 CR_ZIP_SUFFIX=
-CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-OneUI7-erofs-dtb
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-A55-2GHz-OneUI7-erofs-dtb
 
 if [ ! -x "${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}/bin/clang" ]; then
 	echo "Missing Google Clang 20 at ${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}"

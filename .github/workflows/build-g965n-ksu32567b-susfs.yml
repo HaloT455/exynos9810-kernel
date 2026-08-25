@@ -1,10 +1,10 @@
-name: Build G965N KSU 32567b SUSFS
+name: Build G965N KSU 32567b SUSFS A55 2GHz
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - agent/g965n-ksu32567b-susfs
+      - agent/g965n-ksu32567b-susfs-a55-2ghz
 
 permissions:
   contents: read
@@ -46,6 +46,9 @@ jobs:
           test "$(git -C KernelSU-Next rev-parse HEAD)" = '7bd071c11f5a4d22729d73179d149493a6362a26'
           grep -q 'CFLAGS_ksu.o += -DKSU_VERSION=32567' KernelSU-Next/kernel/Makefile
           grep -q '#define SUSFS_VERSION "v2.2.0"' include/linux/susfs.h
+          grep -q 'arg_cpu_max_c1 = 2002000;' drivers/cpufreq/exynos-acme.c
+          grep -q 'arg_cpu_max_c2 = 2704000;' drivers/cpufreq/exynos-acme.c
+          grep -q 'arg_cpu_max_c1, domain->max_freq' drivers/cpufreq/exynos-acme.c
           git -C KernelSU-Next apply --check "$GITHUB_WORKSPACE/patches/kernelsu-32567b-susfs-v2.2.0.patch"
 
       - name: Build enforcing DS-ACK release
@@ -60,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0*.zip' -print -quit)
+          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0-A55-2GHz*.zip' -print -quit)
           test -n "$zip_path"
           tools/verify_release_zip.sh "$zip_path"
           test -f vmlinux
@@ -72,9 +75,9 @@ jobs:
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: G965N-KSU32567b-SUSFS-v2.2.0-Enforcing
+          name: G965N-KSU32567b-SUSFS-v2.2.0-A55-2GHz-Enforcing
           path: |
-            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0*.zip
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-A55-2GHz*.zip
             Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
             build-g965n-susfs.log
           compression-level: 0

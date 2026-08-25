@@ -1150,7 +1150,13 @@ static __init int cpufreq_read_mif_min(char *mif_min)
 }
 __setup("mif_min=", cpufreq_read_mif_min);
 
-unsigned long arg_cpu_max_c1 = 1794000;
+/*
+ * Keep CPUCL0 (Cortex-A55) governor controlled, but expose the highest
+ * 2.002 GHz level supplied by the Exynos9810 CAL/ASV table for short bursts.
+ * init_domain() clamps this request to the actual CAL maximum, so a device
+ * whose firmware does not provide the level stays at its supported ceiling.
+ */
+unsigned long arg_cpu_max_c1 = 2002000;
 
 static int __init cpufreq_read_cpu_max_c1(char *cpu_max_c1)
 {
@@ -1231,8 +1237,10 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 	#endif
 
 	if (domain->id == 0) {
-		domain->max_usable_freq = arg_cpu_max_c1;
-		domain->max_freq = arg_cpu_max_c1;
+		/* Never invent an OPP: only unmask levels that CAL actually exposes. */
+		domain->max_freq = min_t(unsigned long,
+					       arg_cpu_max_c1, domain->max_freq);
+		domain->max_usable_freq = domain->max_freq;
 		domain->min_usable_freq = arg_cpu_min_c1;
 		domain->min_freq = arg_cpu_min_c1;
 	} else if (domain->id == 1) {
