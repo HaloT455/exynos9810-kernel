@@ -320,4 +320,88 @@ index 8c207930..2af97048 100644
  	if (magic1 != KSU_INSTALL_MAGIC1)
  		return 0;
  
-
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+index cad309a7..a5f32c2c 100644
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -1,34 +1,34 @@
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION (6, 7, 0)
+-static struct group_info root_groups = { .usage = REFCOUNT_INIT(2) };
+-#else
+-static struct group_info root_groups = { .usage = ATOMIC_INIT(2) };
+-#endif
++#define KSU_AID_READPROC 3009
+ 
+ static void setup_groups(struct root_profile *profile, struct cred *cred)
+ {
++	bool has_readproc = false;
++	kgid_t readproc_kgid;
++	struct group_info *group_info;
++	u32 ngroups;
++	int i;
++
+ 	if (profile->groups_count > KSU_MAX_GROUPS) {
+ 		pr_warn("Failed to setgroups, too large group: %d!\n",
+ 			profile->uid);
+ 		return;
+ 	}
+ 
+-	if (profile->groups_count == 1 && profile->groups[0] == 0) {
+-		// setgroup to root and return early.
+-		if (cred->group_info)
+-			put_group_info(cred->group_info);
+-		cred->group_info = get_group_info(&root_groups);
+-		return;
++	for (i = 0; i < profile->groups_count; i++) {
++		if (profile->groups[i] == KSU_AID_READPROC) {
++			has_readproc = true;
++			break;
++		}
+ 	}
+ 
+-	u32 ngroups = profile->groups_count;
++	ngroups = profile->groups_count + (has_readproc ? 0 : 1);
+-	struct group_info *group_info = groups_alloc(ngroups);
++	group_info = groups_alloc(ngroups);
+ 	if (!group_info) {
+ 		pr_warn("Failed to setgroups, ENOMEM for: %d\n", profile->uid);
+ 		return;
+ 	}
+ 
+-	int i;
+-	for (i = 0; i < ngroups; i++) {
++	for (i = 0; i < profile->groups_count; i++) {
+ 		gid_t gid = profile->groups[i];
+ 		kgid_t kgid = make_kgid(current_user_ns(), gid);
+ 		if (!gid_valid(kgid)) {
+@@ -43,6 +43,20 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
+ #endif
+ 	}
+ 
++	if (!has_readproc) {
++		readproc_kgid = make_kgid(current_user_ns(), KSU_AID_READPROC);
++		if (!gid_valid(readproc_kgid)) {
++			pr_warn("Failed to add AID_READPROC for: %d\n", profile->uid);
++			put_group_info(group_info);
++			return;
++		}
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++		group_info->gid[profile->groups_count] = readproc_kgid;
++#else
++		GROUP_AT(group_info, profile->groups_count) = readproc_kgid;
++#endif
++	}
++
+ 	groups_sort(group_info);
+ 	set_groups(cred, group_info);
+ 	put_group_info(group_info);
+@@ -175,7 +189,9 @@ static int escape_to_root(bool is_forced)
+ 
+ 	memcpy(&cred->cap_effective, &profile->capabilities.effective, sizeof(cred->cap_effective));
+ 	memcpy(&cred->cap_permitted, &profile->capabilities.effective, sizeof(cred->cap_permitted));
++	memcpy(&cred->cap_inheritable, &profile->capabilities.effective, sizeof(cred->cap_inheritable));
+ 	memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
++	memcpy(&cred->cap_ambient, &profile->capabilities.effective, sizeof(cred->cap_ambient));
+ 
+ 	setup_groups(profile, cred);
+ 	setup_selinux(profile->selinux_domain, cred);

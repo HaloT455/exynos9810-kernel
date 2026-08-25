@@ -240,8 +240,9 @@ BUILD_IMAGE_NAME()
 }
 
 # Pin the exact KernelSU requested for this release and apply the SUSFS v2.2.0
-# command/UID/SELinux bridge. The patch is idempotent so incremental multi-device
-# builds reuse the already prepared submodule.
+# command/UID/SELinux bridge plus the KSU-only AID_READPROC credential path.
+# The patch is idempotent so incremental multi-device builds reuse the already
+# prepared submodule.
 PREPARE_KSU_SUSFS()
 {
 	KSU_PIN=7bd071c11f5a4d22729d73179d149493a6362a26
@@ -620,7 +621,7 @@ CR_CLEAN=${DS_ACK_CLEAN:-n}
 CR_KSU=y
 CR_SELINUX=2
 CR_ZIP_SUFFIX=
-CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-A55-2GHz-OneUI7-erofs-dtb
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-OneUI7-erofs-dtb
 
 if [ ! -x "${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}/bin/clang" ]; then
 	echo "Missing Google Clang 20 at ${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}"

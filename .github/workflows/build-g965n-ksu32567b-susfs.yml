@@ -1,10 +1,10 @@
-name: Build G965N KSU 32567b SUSFS A55 2GHz
+name: Build G965N KSU 32567b SUSFS GID3009 FullCred A55 2GHz
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - agent/g965n-ksu32567b-susfs-a55-2ghz
+      - agent/g965n-ksu32567b-susfs-a55-2ghz-gid3009
 
 permissions:
   contents: read
@@ -49,6 +49,11 @@ jobs:
           grep -q 'arg_cpu_max_c1 = 2002000;' drivers/cpufreq/exynos-acme.c
           grep -q 'arg_cpu_max_c2 = 2704000;' drivers/cpufreq/exynos-acme.c
           grep -q 'arg_cpu_max_c1, domain->max_freq' drivers/cpufreq/exynos-acme.c
+          grep -q '#define KSU_AID_READPROC 3009' patches/kernelsu-32567b-susfs-v2.2.0.patch
+          grep -q 'cred->cap_inheritable' patches/kernelsu-32567b-susfs-v2.2.0.patch
+          grep -q 'cred->cap_ambient' patches/kernelsu-32567b-susfs-v2.2.0.patch
+          grep -q '# CONFIG_KSU_LSM_SECURITY_HOOKS is not set' arch/arm64/configs/apollo_defconfig
+          grep -q '# CONFIG_KSU_TAMPER_SYSCALL_TABLE is not set' arch/arm64/configs/apollo_defconfig
           git -C KernelSU-Next apply --check "$GITHUB_WORKSPACE/patches/kernelsu-32567b-susfs-v2.2.0.patch"
 
       - name: Build enforcing DS-ACK release
@@ -63,10 +68,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0-A55-2GHz*.zip' -print -quit)
+          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz*.zip' -print -quit)
           test -n "$zip_path"
           tools/verify_release_zip.sh "$zip_path"
           test -f vmlinux
+          grep -q '#define KSU_AID_READPROC 3009' KernelSU-Next/kernel/policy/app_profile.c
+          grep -q 'cred->cap_inheritable' KernelSU-Next/kernel/policy/app_profile.c
+          grep -q 'cred->cap_ambient' KernelSU-Next/kernel/policy/app_profile.c
           nm -n vmlinux | grep -q ' susfs_init$'
           nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain$'
           nm -n vmlinux | grep -q ' ksu_handle_sys_reboot$'
@@ -75,9 +83,9 @@ jobs:
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: G965N-KSU32567b-SUSFS-v2.2.0-A55-2GHz-Enforcing
+          name: G965N-KSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-Enforcing
           path: |
-            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-A55-2GHz*.zip
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz*.zip
             Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
             build-g965n-susfs.log
           compression-level: 0
