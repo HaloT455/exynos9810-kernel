@@ -4,11 +4,6 @@
 #include <linux/seq_file.h>
 #include <asm/setup.h>
 
-#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-extern struct static_key_false susfs_is_fake_cmdline_or_bootconfig_buffer_set;
-extern void susfs_spoof_cmdline_or_bootconfig(struct seq_file *m);
-#endif
-
 enum {
 	FLAG_DELETE = 0,
 	FLAG_REPLACE,
@@ -18,15 +13,10 @@ static char new_command_line[COMMAND_LINE_SIZE];
 
 static int cmdline_proc_show(struct seq_file *m, void *v)
 {
-#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-	/* A SUSFS-supplied cmdline takes precedence over the SafetyNet
-	 * rewriting done in proc_cmdline_init() below. */
-	if (static_branch_likely(&susfs_is_fake_cmdline_or_bootconfig_buffer_set)) {
-		susfs_spoof_cmdline_or_bootconfig(m);
-		seq_putc(m, '\n');
-		return 0;
-	}
-#endif
+	/*
+	 * Always expose the kernel-enforced sanitized command line.  A dynamic
+	 * SUSFS buffer must not be able to reintroduce orange/unlocked values.
+	 */
 	seq_puts(m, new_command_line);
 	seq_putc(m, '\n');
 	return 0;
@@ -55,8 +45,11 @@ static int process_flag(int replace, const char *flag, const char *new_var)
 	/* Ensure all instances of a flag are removed */
 	while ((start_flag = strnstr(new_command_line, flag, COMMAND_LINE_SIZE))) {
 		end_flag = strnchr(start_flag, last_char - start_flag, ' ');
+		if (!end_flag)
+			end_flag = new_command_line +
+				   strnlen(new_command_line, COMMAND_LINE_SIZE);
 
-		/* this may happend when copied cmdline is filled up fully */
+		/* This may happen when copied cmdline is filled up fully. */
 		if (end_flag > last_char)
 			end_flag = last_char;
 
@@ -105,21 +98,45 @@ static int process_flag(int replace, const char *flag, const char *new_var)
 
 	return ret;
 }
+
+static int force_flag_value(const char *flag, const char *value)
+{
+	size_t cmd_len, required;
+	int ret;
+
+	ret = process_flag(FLAG_REPLACE, flag, value);
+	if (ret)
+		return ret;
+
+	cmd_len = strnlen(new_command_line, COMMAND_LINE_SIZE);
+	required = strlen(flag) + strlen(value) + 1;
+	if (cmd_len + required >= COMMAND_LINE_SIZE)
+		return -ENOSPC;
+
+	if (cmd_len && new_command_line[cmd_len - 1] != ' ')
+		new_command_line[cmd_len++] = ' ';
+
+	scnprintf(new_command_line + cmd_len, COMMAND_LINE_SIZE - cmd_len,
+		  "%s%s", flag, value);
+	return 1;
+}
 #endif
 
 static int __init proc_cmdline_init(void)
 {
-	memcpy(new_command_line, saved_command_line,
-		min((size_t)COMMAND_LINE_SIZE, strlen(saved_command_line)));
+	strlcpy(new_command_line, saved_command_line,
+		sizeof(new_command_line));
 
 #ifdef CONFIG_PROC_SPOOF_CMDLINE
 	/*
-	 * Remove various flags from command line seen by userspace in order to
-	 * pass SafetyNet CTS check.
+	 * Force a single sanitized value for each userspace-visible boot state.
+	 * force_flag_value() also appends a token when the bootloader omitted it.
 	 */
-	process_flag(FLAG_REPLACE, "androidboot.verifiedbootstate=", "green"); // Play Integrity API / SafetyNet
-	process_flag(FLAG_REPLACE, "androidboot.warranty_bit=", "0"); // Bootloader status and Knox
-	process_flag(FLAG_REPLACE, "androidboot.fmp_config=", "1"); // Samsung Knox FMP / FIPS
+	force_flag_value("androidboot.verifiedbootstate=", "green");
+	force_flag_value("androidboot.flash.locked=", "1");
+	force_flag_value("androidboot.veritymode=", "enforcing");
+	force_flag_value("androidboot.warranty_bit=", "0");
+	force_flag_value("androidboot.fmp_config=", "1");
 #endif
 
 	proc_create("cmdline", 0, NULL, &cmdline_proc_fops);
