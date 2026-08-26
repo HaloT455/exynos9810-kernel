@@ -81,32 +81,8 @@ jobs:
           grep -q 'cred->cap_inheritable' KernelSU-Next/kernel/policy/app_profile.c
           grep -q 'cred->cap_ambient' KernelSU-Next/kernel/policy/app_profile.c
           nm -n vmlinux | grep -q ' susfs_init$'
-          nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain
-
-      - name: Upload flashable ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: G965N-V1.13-KSU32567b-SUSFS-AutoHide-Locked-Verity-Enforcing
-          path: |
-            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip
-            Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
-            build-g965n-susfs.log
-          compression-level: 0
-          retention-days: 14
-
-          nm -n vmlinux | grep -q ' ksu_handle_sys_reboot
-
-      - name: Upload flashable ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: G965N-V1.13-KSU32567b-SUSFS-AutoHide-Locked-Verity-Enforcing
-          path: |
-            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip
-            Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
-            build-g965n-susfs.log
-          compression-level: 0
-          retention-days: 14
-
+          nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain$'
+          nm -n vmlinux | grep -q ' ksu_handle_sys_reboot$'
           tmp_kernel=$(mktemp)
           unzip -p "$zip_path" floyd/G960F-kernel > "$tmp_kernel"
           strings "$tmp_kernel" | grep -qx 'androidboot.flash.locked='
