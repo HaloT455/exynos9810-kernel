@@ -1,10 +1,10 @@
-name: Build G965N KSU 32567b SUSFS GID3009 FullCred A55 2GHz
+name: Build G965N V1.13 AutoHide Locked Verity
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - agent/g965n-ksu32567b-susfs-a55-2ghz-gid3009
+      - agent/g965n-v1.13-autohide-locked-verity
 
 permissions:
   contents: read
@@ -54,6 +54,11 @@ jobs:
           grep -q 'cred->cap_ambient' patches/kernelsu-32567b-susfs-v2.2.0.patch
           grep -q '# CONFIG_KSU_LSM_SECURITY_HOOKS is not set' arch/arm64/configs/apollo_defconfig
           grep -q '# CONFIG_KSU_TAMPER_SYSCALL_TABLE is not set' arch/arm64/configs/apollo_defconfig
+          grep -q 'force_flag_value("androidboot.flash.locked=", "1")' fs/proc/cmdline.c
+          grep -q 'force_flag_value("androidboot.veritymode=", "enforcing")' fs/proc/cmdline.c
+          grep -q 'susfs_should_hide_default_path' fs/namei.c
+          grep -q 'susfs_should_hide_default_mount' fs/proc_namespace.c
+          grep -q '!strcmp(sb->s_type->name, "overlay")' fs/proc_namespace.c
           git -C KernelSU-Next apply --check "$GITHUB_WORKSPACE/patches/kernelsu-32567b-susfs-v2.2.0.patch"
 
       - name: Build enforcing DS-ACK release
@@ -61,14 +66,14 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x apollo.sh tools/verify_release_zip.sh
-          DS_ACK_BUILD_DATE=08.25.2026 DS_ACK_JOBS=4 \
+          DS_ACK_BUILD_DATE=08.26.2026 DS_ACK_JOBS=4 \
             ./apollo.sh --erofs-enforcing-susfs-release 2>&1 | tee build-g965n-susfs.log
 
       - name: Verify KernelSU-SUSFS linkage and ZIP
         shell: bash
         run: |
           set -euo pipefail
-          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz*.zip' -print -quit)
+          zip_path=$(find Apollo/Product -maxdepth 1 -type f -name '*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip' -print -quit)
           test -n "$zip_path"
           tools/verify_release_zip.sh "$zip_path"
           test -f vmlinux
@@ -76,16 +81,45 @@ jobs:
           grep -q 'cred->cap_inheritable' KernelSU-Next/kernel/policy/app_profile.c
           grep -q 'cred->cap_ambient' KernelSU-Next/kernel/policy/app_profile.c
           nm -n vmlinux | grep -q ' susfs_init$'
-          nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain$'
-          nm -n vmlinux | grep -q ' ksu_handle_sys_reboot$'
+          nm -n vmlinux | grep -q ' susfs_is_current_ksu_domain
+
+      - name: Upload flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: G965N-V1.13-KSU32567b-SUSFS-AutoHide-Locked-Verity-Enforcing
+          path: |
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip
+            Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
+            build-g965n-susfs.log
+          compression-level: 0
+          retention-days: 14
+
+          nm -n vmlinux | grep -q ' ksu_handle_sys_reboot
+
+      - name: Upload flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: G965N-V1.13-KSU32567b-SUSFS-AutoHide-Locked-Verity-Enforcing
+          path: |
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip
+            Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
+            build-g965n-susfs.log
+          compression-level: 0
+          retention-days: 14
+
+          tmp_kernel=$(mktemp)
+          unzip -p "$zip_path" floyd/G960F-kernel > "$tmp_kernel"
+          strings "$tmp_kernel" | grep -qx 'androidboot.flash.locked='
+          strings "$tmp_kernel" | grep -qx 'androidboot.veritymode='
+          rm -f "$tmp_kernel"
           sha256sum "$zip_path" > Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
 
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: G965N-KSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-Enforcing
+          name: G965N-V1.13-KSU32567b-SUSFS-AutoHide-Locked-Verity-Enforcing
           path: |
-            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz*.zip
+            Apollo/Product/*KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity*.zip
             Apollo/Product/SHA256SUMS-G965N-KSU32567b-SUSFS.txt
             build-g965n-susfs.log
           compression-level: 0
