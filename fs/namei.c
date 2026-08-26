@@ -49,7 +49,91 @@
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern bool susfs_is_inode_sus_path(struct inode *inode);
+extern bool susfs_is_current_ksu_domain(void);
 extern const struct qstr susfs_fake_qstr_name;
+
+#define SUSFS_ANDROID_USER_OFFSET 100000U
+#define SUSFS_ANDROID_APP_START   10000U
+
+static bool susfs_is_untrusted_app_process(void)
+{
+	unsigned int uid = __kuid_val(current_uid());
+
+	return (uid % SUSFS_ANDROID_USER_OFFSET) >= SUSFS_ANDROID_APP_START &&
+	       !susfs_is_current_ksu_domain();
+}
+
+static bool susfs_component_equals(const char *name, size_t len,
+				   const char *component)
+{
+	size_t component_len = strlen(component);
+
+	return len == component_len && !strncmp(name, component, len);
+}
+
+static bool susfs_is_default_hidden_component(const char *name, size_t len)
+{
+	if (susfs_component_equals(name, len, "su") ||
+	    susfs_component_equals(name, len, "overlay"))
+		return true;
+
+	/* Cover magisk, magisk32/64, magisk.db and .magisk. */
+	if (len >= 6 && !strncmp(name, "magisk", 6))
+		return true;
+	if (len >= 7 && name[0] == '.' && !strncmp(name + 1, "magisk", 6))
+		return true;
+
+	return false;
+}
+
+/*
+ * Default deny-list for untrusted Android app UIDs.  Match path components,
+ * never arbitrary substrings: a blanket "su" strstr() would hide unrelated
+ * files.  Repeated '/' and '.' components are ignored; /proc/<pid>/root/data/adb
+ * is also caught because the data/adb pair may appear below another prefix.
+ */
+static bool susfs_should_hide_default_path(const char *path)
+{
+	const char *cursor = path;
+	bool previous_was_data = false;
+
+	if (!susfs_is_untrusted_app_process())
+		return false;
+
+	while (*cursor) {
+		const char *component;
+		size_t len;
+
+		while (*cursor == '/')
+			cursor++;
+		if (!*cursor)
+			break;
+
+		component = cursor;
+		while (*cursor && *cursor != '/')
+			cursor++;
+		len = cursor - component;
+
+		if (susfs_component_equals(component, len, ".")) {
+			continue;
+		} else if (susfs_component_equals(component, len, "..")) {
+			previous_was_data = false;
+			continue;
+		}
+
+		if (previous_was_data &&
+		    susfs_component_equals(component, len, "adb"))
+			return true;
+
+		if (susfs_is_default_hidden_component(component, len))
+			return true;
+
+		previous_was_data =
+			susfs_component_equals(component, len, "data");
+	}
+
+	return false;
+}
 #endif
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
@@ -199,6 +283,12 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	}
 
 	result->refcnt = 1;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	if (unlikely(len && susfs_should_hide_default_path(result->name))) {
+		putname(result);
+		return ERR_PTR(-ENOENT);
+	}
+#endif
 	/* The empty path is special. */
 	if (unlikely(!len)) {
 		if (empty)
