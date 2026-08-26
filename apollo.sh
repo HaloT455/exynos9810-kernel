@@ -40,7 +40,7 @@ CR_DTB=$CR_DIR/arch/$CR_ARCH/boot/dtb.img
 # defconfig dir
 CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
-CR_VERSION=V1.13
+CR_VERSION=V1.14
 CR_NAME=DS-ACK
 # Thread count
 CR_JOBS=${DS_ACK_JOBS:-6}
@@ -611,7 +611,7 @@ BUILD_ALL || return 1
 # Reproducible enforcing-only KernelSU 32567b + SUSFS v2.2.0 release.
 BUILD_EROFS_ENFORCING_SUSFS_RELEASE(){
 echo "----------------------------------------------"
-echo " DS-ACK V1.13 KSU 32567b + SUSFS v2.2.0 AutoHide "
+echo " DS-ACK V1.14 KSU 32567b + SUSFS v2.2.0 Scoped AutoHide "
 echo "----------------------------------------------"
 
 CR_DATE=${DS_ACK_BUILD_DATE:-08.26.2026}
@@ -621,7 +621,7 @@ CR_CLEAN=${DS_ACK_CLEAN:-n}
 CR_KSU=y
 CR_SELINUX=2
 CR_ZIP_SUFFIX=
-CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-AutoHide-Locked-Verity-OneUI7-erofs-dtb
+CR_ZIP_NAME=$CR_NAME-$CR_VERSION-$CR_DATE-Enforcing-KernelSU32567b-SUSFS-v2.2.0-GID3009-FullCred-A55-2GHz-ScopedAutoHide-CA-E005-Fix-Locked-Verity-OneUI7-erofs-dtb
 
 if [ ! -x "${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}/bin/clang" ]; then
 	echo "Missing Google Clang 20 at ${DS_ACK_TOOLCHAIN:-$CR_TC/clang-20.0.0-r547379}"
