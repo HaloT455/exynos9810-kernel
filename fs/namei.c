@@ -71,12 +71,8 @@ static bool susfs_component_equals(const char *name, size_t len,
 	return len == component_len && !strncmp(name, component, len);
 }
 
-static bool susfs_is_default_hidden_component(const char *name, size_t len)
+static bool susfs_is_magisk_component(const char *name, size_t len)
 {
-	if (susfs_component_equals(name, len, "su") ||
-	    susfs_component_equals(name, len, "overlay"))
-		return true;
-
 	/* Cover magisk, magisk32/64, magisk.db and .magisk. */
 	if (len >= 6 && !strncmp(name, "magisk", 6))
 		return true;
@@ -87,10 +83,53 @@ static bool susfs_is_default_hidden_component(const char *name, size_t len)
 }
 
 /*
- * Default deny-list for untrusted Android app UIDs.  Match path components,
- * never arbitrary substrings: a blanket "su" strstr() would hide unrelated
- * files.  Repeated '/' and '.' components are ignored; /proc/<pid>/root/data/adb
- * is also caught because the data/adb pair may appear below another prefix.
+ * Only reject well-known root binary probes.  Do not reject every pathname
+ * component named "su" or "overlay": Android resource overlays and legitimate
+ * app-private files must remain accessible to messaging and banking apps.
+ * Overlay mounts are still hidden from /proc/*/{mounts,mountinfo,mountstats}
+ * by fs/proc_namespace.c.
+ */
+static bool susfs_is_root_su_probe(const char *path)
+{
+	static const char * const suffixes[] = {
+		"system/bin/su",
+		"system/xbin/su",
+		"system/bin/.ext/.su",
+		"vendor/bin/su",
+		"vendor/xbin/su",
+		"sbin/su",
+		"data/local/su",
+		"data/local/bin/su",
+		"data/local/xbin/su",
+	};
+	size_t path_len;
+	int index;
+
+	if (!strcmp(path, "su") || !strcmp(path, "/su"))
+		return true;
+
+	path_len = strlen(path);
+	for (index = 0; index < ARRAY_SIZE(suffixes); index++) {
+		size_t suffix_len = strlen(suffixes[index]);
+		const char *match;
+
+		if (path_len < suffix_len)
+			continue;
+		match = path + path_len - suffix_len;
+		if (!strncmp(match, suffixes[index], suffix_len) &&
+		    (match == path || match[-1] == '/'))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Default deny-list for untrusted Android app UIDs. Match path components,
+ * never arbitrary substrings.  /proc/<pid>/root/data/adb is caught because
+ * the data/adb pair may appear below another prefix.  The VFS deny-list is
+ * deliberately narrower than the mount-list filter so normal Android RRO/OMS
+ * overlay resources remain usable.
  */
 static bool susfs_should_hide_default_path(const char *path)
 {
@@ -99,6 +138,9 @@ static bool susfs_should_hide_default_path(const char *path)
 
 	if (!susfs_is_untrusted_app_process())
 		return false;
+
+	if (susfs_is_root_su_probe(path))
+		return true;
 
 	while (*cursor) {
 		const char *component;
@@ -125,7 +167,7 @@ static bool susfs_should_hide_default_path(const char *path)
 		    susfs_component_equals(component, len, "adb"))
 			return true;
 
-		if (susfs_is_default_hidden_component(component, len))
+		if (susfs_is_magisk_component(component, len))
 			return true;
 
 		previous_was_data =
@@ -134,6 +176,7 @@ static bool susfs_should_hide_default_path(const char *path)
 
 	return false;
 }
+
 #endif
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
