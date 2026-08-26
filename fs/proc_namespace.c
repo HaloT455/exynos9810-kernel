@@ -21,6 +21,88 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern bool susfs_is_current_ksu_domain(void);
 extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
+
+#define SUSFS_ANDROID_USER_OFFSET 100000U
+#define SUSFS_ANDROID_APP_START   10000U
+
+static bool susfs_mount_component_equals(const char *name, size_t len,
+					 const char *component)
+{
+	size_t component_len = strlen(component);
+
+	return len == component_len && !strncmp(name, component, len);
+}
+
+static bool susfs_mount_string_has_default_trace(const char *path)
+{
+	const char *cursor = path;
+	bool previous_was_data = false;
+
+	if (!path)
+		return false;
+
+	while (*cursor) {
+		const char *component;
+		size_t len;
+
+		while (*cursor == '/')
+			cursor++;
+		if (!*cursor)
+			break;
+
+		component = cursor;
+		while (*cursor && *cursor != '/')
+			cursor++;
+		len = cursor - component;
+
+		if (previous_was_data &&
+		    susfs_mount_component_equals(component, len, "adb"))
+			return true;
+		if (susfs_mount_component_equals(component, len, "su") ||
+		    susfs_mount_component_equals(component, len, "overlay"))
+			return true;
+		if (len >= 6 && !strncmp(component, "magisk", 6))
+			return true;
+		if (len >= 7 && component[0] == '.' &&
+		    !strncmp(component + 1, "magisk", 6))
+			return true;
+
+		previous_was_data =
+			susfs_mount_component_equals(component, len, "data");
+	}
+
+	return false;
+}
+
+static bool susfs_should_hide_default_mount(struct vfsmount *mnt)
+{
+	struct mount *r = real_mount(mnt);
+	struct super_block *sb = mnt->mnt_sb;
+
+	if (r->mnt_id >= DEFAULT_KSU_MNT_ID)
+		return true;
+
+	/* Overlay is useful to root implementations but not to app diagnostics. */
+	if (sb && sb->s_type && sb->s_type->name &&
+	    !strcmp(sb->s_type->name, "overlay"))
+		return true;
+
+	return susfs_mount_string_has_default_trace(r->mnt_devname);
+}
+
+static bool susfs_should_filter_mounts_for_current(void)
+{
+	unsigned int uid;
+
+	if (susfs_is_current_ksu_domain())
+		return false;
+	if (static_branch_unlikely(
+			&susfs_is_hide_sus_mnts_for_non_su_procs_enabled))
+		return true;
+
+	uid = __kuid_val(current_uid());
+	return (uid % SUSFS_ANDROID_USER_OFFSET) >= SUSFS_ANDROID_APP_START;
+}
 #endif
 
 static unsigned mounts_poll(struct file *file, poll_table *wait)
@@ -253,7 +335,7 @@ static int susfs_show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 	struct super_block *sb = mnt_path.dentry->d_sb;
 	int err;
 
-	if (r->mnt_id >= DEFAULT_KSU_MNT_ID)
+	if (susfs_should_hide_default_mount(mnt))
 		return 0;
 
 	if (sb->s_op->show_devname) {
@@ -292,7 +374,7 @@ static int susfs_show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	struct path mnt_path = { .dentry = mnt->mnt_root, .mnt = mnt };
 	int err;
 
-	if (r->mnt_id >= DEFAULT_KSU_MNT_ID)
+	if (susfs_should_hide_default_mount(mnt))
 		return 0;
 
 	seq_printf(m, "%i %i %u:%u ", r->mnt_id, r->mnt_parent->mnt_id,
@@ -359,7 +441,7 @@ static int susfs_show_vfsstat(struct seq_file *m, struct vfsmount *mnt)
 	struct super_block *sb = mnt_path.dentry->d_sb;
 	int err;
 
-	if (r->mnt_id >= DEFAULT_KSU_MNT_ID)
+	if (susfs_should_hide_default_mount(mnt))
 		return 0;
 
 	/* device */
@@ -469,10 +551,8 @@ static int mounts_release(struct inode *inode, struct file *file)
 static int mounts_open(struct inode *inode, struct file *file)
 {
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (static_branch_unlikely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
-		if (likely(!susfs_is_current_ksu_domain()))
-			return mounts_open_common(inode, file, susfs_show_vfsmnt);
-	}
+	if (susfs_should_filter_mounts_for_current())
+		return mounts_open_common(inode, file, susfs_show_vfsmnt);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	return mounts_open_common(inode, file, show_vfsmnt);
 }
@@ -480,10 +560,8 @@ static int mounts_open(struct inode *inode, struct file *file)
 static int mountinfo_open(struct inode *inode, struct file *file)
 {
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (static_branch_unlikely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
-		if (likely(!susfs_is_current_ksu_domain()))
-			return mounts_open_common(inode, file, susfs_show_mountinfo);
-	}
+	if (susfs_should_filter_mounts_for_current())
+		return mounts_open_common(inode, file, susfs_show_mountinfo);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	return mounts_open_common(inode, file, show_mountinfo);
 }
@@ -491,10 +569,8 @@ static int mountinfo_open(struct inode *inode, struct file *file)
 static int mountstats_open(struct inode *inode, struct file *file)
 {
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (static_branch_unlikely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
-		if (likely(!susfs_is_current_ksu_domain()))
-			return mounts_open_common(inode, file, susfs_show_vfsstat);
-	}
+	if (susfs_should_filter_mounts_for_current())
+		return mounts_open_common(inode, file, susfs_show_vfsstat);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	return mounts_open_common(inode, file, show_vfsstat);
 }
