@@ -86,7 +86,7 @@ static bool susfs_is_magisk_component(const char *name, size_t len)
  * Only reject well-known root binary probes.  Do not reject every pathname
  * component named "su" or "overlay": Android resource overlays and legitimate
  * app-private files must remain accessible to messaging and banking apps.
- * Overlay mounts are still hidden from /proc/*/{mounts,mountinfo,mountstats}
+ * Overlay mounts are still hidden from /proc/<pid>/{mounts,mountinfo,mountstats}
  * by fs/proc_namespace.c.
  */
 static bool susfs_is_root_su_probe(const char *path)
