@@ -1,5 +1,9 @@
 #!/bin/bash
 set -e
+if [[ ${DS_ACK_PIN_WIREGUARD:-0} == 1 ]]; then
+	test -s net/wireguard/version.h
+	exit $?
+fi
 USER_AGENT="WireGuard-AndroidROMBuild/0.3 ($(uname -a))"
 
 exec 9>.wireguard-fetch-lock

@@ -65,13 +65,19 @@ popd > /dev/null
 # happen with out of tree builds. Just silence CPIO for now.
 for f in $dir_list;
 	do find "$f" -name "*.h";
-done | cpio --quiet -pd $cpio_dir >/dev/null 2>&1
+done | cpio --quiet -pdu $cpio_dir >/dev/null 2>&1
 
 # Remove comments except SDPX lines
 find $cpio_dir -type f -print0 |
 	xargs -0 -P8 -n1 perl -pi -e 'BEGIN {undef $/;}; s/\/\*((?!SPDX).)*?\*\///smg;'
 
-tar -Jcf $tarfile -C $cpio_dir/ . > /dev/null
+# Some container filesystems settle copied directory metadata after traversal.
+# Retry a changed-file snapshot once; other tar failures remain fatal.
+tar -Jcf $tarfile -C $cpio_dir/ . > /dev/null || {
+	status=$?
+	[ "$status" -eq 1 ] || exit "$status"
+	tar -Jcf $tarfile -C $cpio_dir/ . > /dev/null
+}
 
 echo "$src_files_md5" >  kernel/kheaders.md5
 echo "$obj_files_md5" >> kernel/kheaders.md5
