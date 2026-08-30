@@ -1,0 +1,113 @@
+name: Build G965N original KernelSU A55 2GHz
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/g965n-ksu-original-a55-20260830
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout kernel and pinned original KernelSU
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Verify exact restoration and preserved hardware source
+        shell: bash
+        run: |
+          set -euo pipefail
+          original=22810fa9ac8c66150a09dfb9fe6f3bc5929378e4
+          base=2733822aa088af10b598316dce7e5596097c485f
+          git fetch --no-tags --depth=1 origin "$original" "$base"
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = '1ce19e536de730829b62d0d23dbd96c6ec809e2f'
+          if [ "$(git -C KernelSU-Next rev-parse --is-shallow-repository)" = true ]; then
+            git -C KernelSU-Next fetch --unshallow --tags origin
+          fi
+          git -C KernelSU-Next describe --tags --always
+          git -C KernelSU-Next rev-list --count HEAD
+          git diff --exit-code "$base" HEAD -- drivers/cpufreq/exynos-acme.c arch/arm64/boot/dts drivers/thermal drivers/gpu kernel/sched
+          python3 - <<'PY'
+          import subprocess
+          changed = set(subprocess.check_output([
+              'git', 'diff', '--name-only',
+              '22810fa9ac8c66150a09dfb9fe6f3bc5929378e4', 'HEAD'
+          ], text=True).splitlines())
+          expected = {
+              '.github/workflows/build-g965n-ksu-restored.yml',
+              'apollo.sh', 'tools/verify_release_zip.sh',
+              'drivers/cpufreq/exynos-acme.c',
+          }
+          assert changed == expected, f'Unexpected source changes: {changed ^ expected}'
+          PY
+          test ! -e fs/susfs.c
+          test ! -e include/linux/susfs.h
+          test ! -e patches/kernelsu-32567b-susfs-v2.2.0.patch
+          grep -q 'ksu_handle_vfs_read' fs/read_write.c
+          grep -q 'ksu_handle_execveat' fs/exec.c
+          grep -q 'ksu_handle_sys_reboot' kernel/reboot.c
+          grep -q 'ksu_handle_input_handle_event' drivers/input/input.c
+          grep -q 'arg_cpu_max_c1 = 2002000;' drivers/cpufreq/exynos-acme.c
+          grep -q 'arg_cpu_max_c2 = 2704000;' drivers/cpufreq/exynos-acme.c
+          grep -q 'arg_cpu_max_c1, domain->max_freq' drivers/cpufreq/exynos-acme.c
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bsdiff binutils curl python3 unzip zip
+
+      - name: Install Google Clang 20 r547379
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain_dir="$GITHUB_WORKSPACE/../compiler/clang-20.0.0-r547379"
+          archive="$RUNNER_TEMP/clang-r547379.tar.gz"
+          mkdir -p "$toolchain_dir"
+          curl --fail --location --retry 5 --retry-delay 5 \
+            'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz' \
+            --output "$archive"
+          tar -xzf "$archive" -C "$toolchain_dir"
+          "$toolchain_dir/bin/clang" --version
+
+      - name: Build enforcing original-KernelSU release
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x apollo.sh tools/verify_release_zip.sh scripts/extract-ikconfig
+          DS_ACK_BUILD_DATE=08.30.2026 DS_ACK_JOBS=4 \
+            ./apollo.sh --erofs-enforcing-legacy-ksu-release 2>&1 | tee build-g965n-ksu-restored.log
+
+      - name: Verify six payloads and original KSU linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip_path='Apollo/Product/DS-ACK-V1.12-08.30.2026-Enforcing-KernelSU-Restored-A55-2GHz-OneUI7-erofs-dtb.zip'
+          test -s "$zip_path"
+          tools/verify_release_zip.sh "$zip_path"
+          nm -n vmlinux > "$RUNNER_TEMP/kernel-symbols.txt"
+          for symbol in ksu_handle_vfs_read ksu_handle_execveat ksu_handle_sys_reboot; do
+            grep -q " ${symbol}$" "$RUNNER_TEMP/kernel-symbols.txt"
+          done
+          if grep -Eq ' [tT] susfs_' "$RUNNER_TEMP/kernel-symbols.txt"; then
+            echo 'ERROR: unexpected SUSFS symbols in restored kernel'
+            exit 1
+          fi
+          sha256sum "$zip_path" > Apollo/Product/SHA256SUMS-G965N-KSU-Restored.txt
+
+      - name: Upload flashable ZIP and build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: G965N-KernelSU-Restored-A55-2GHz-Enforcing
+          path: |
+            Apollo/Product/*KernelSU-Restored-A55-2GHz*.zip
+            Apollo/Product/SHA256SUMS-G965N-KSU-Restored.txt
+            build-g965n-ksu-restored.log
+          compression-level: 0
+          retention-days: 14
