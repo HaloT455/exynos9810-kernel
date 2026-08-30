@@ -1244,8 +1244,10 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 		domain->min_usable_freq = arg_cpu_min_c1;
 		domain->min_freq = arg_cpu_min_c1;
 	} else if (domain->id == 1) {
-		domain->max_usable_freq = arg_cpu_max_c2;
-		domain->max_freq = arg_cpu_max_c2;
+		/* Retain the requested ceiling only where the device's CAL allows it. */
+		domain->max_freq = min_t(unsigned long,
+					       arg_cpu_max_c2, domain->max_freq);
+		domain->max_usable_freq = domain->max_freq;
 		domain->min_usable_freq = arg_cpu_min_c2;
 		domain->min_freq = arg_cpu_min_c2;
 	}

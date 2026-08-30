@@ -18,7 +18,7 @@ export DS_ACK_PIN_WIREGUARD=1
 export CONFIG_MACH_EXYNOS9810_STAR2LTE_KOR=y
 export CONFIG_THINLTO=y CONFIG_UNIFIEDLTO=y CONFIG_LLVM_MLGO_REGISTER=y
 export CONFIG_LLVM_POLLY=y CONFIG_LLVM_DFA_JUMP_THREAD=y
-export LOCALVERSION=-DS-ACK-V1.12-G965N-08.30.2026-KSU-SUSFS220
+export LOCALVERSION=${DS_ACK_LOCALVERSION:--DS-ACK-V1.12-G965N-08.30.2026-KSU-SUSFS220}
 if [ -f patches/kernelsu-original-susfs220.patch ]; then
     if git -C KernelSU-Next apply --check ../patches/kernelsu-original-susfs220.patch; then
         git -C KernelSU-Next apply ../patches/kernelsu-original-susfs220.patch

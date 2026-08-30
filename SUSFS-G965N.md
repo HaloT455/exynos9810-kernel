@@ -1,5 +1,11 @@
 # G965N: restored KernelSU + SUSFS 2.2.0
 
+This document records the first SUSFS-only release (`de865ad15dc4`). The
+Smooth65 follow-up changes CPU scheduling/thermal behavior and also replaces
+the G965N DTB; use [SMOOTH65-G965N.md](SMOOTH65-G965N.md) for its build,
+packaging, checks, and limitations. The original-release hashes below are
+historical, not the Smooth65 artifact hashes.
+
 Experimental integration for the supplied DS-ACK G965N build. Compilation and
 host-side checks do not establish that the phone boots or that every feature
 works on-device. Keep a known-good boot backup and working recovery before testing.

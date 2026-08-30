@@ -79,6 +79,7 @@ struct sugov_cpu {
 };
 
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
+static struct workqueue_struct *sugov_wq;
 
 /******************* exynos specific function *******************/
 #define DEFAULT_EXPIRED_TIME	70
@@ -161,7 +162,8 @@ static int sugov_select_scaling_cpu(void)
 			return cpu;
 	}
 
-	return cpumask_weight(&mask) - 1;
+	/* CPU masks can have holes during hotplug; a count is not a CPU ID. */
+	return cpumask_empty(&mask) ? -1 : cpumask_first(&mask);
 }
 
 static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
@@ -451,7 +453,7 @@ static void sugov_irq_work(struct irq_work *irq_work)
 	struct sugov_policy *sg_policy;
 
 	sg_policy = container_of(irq_work, struct sugov_policy, irq_work);
-	schedule_work_on(smp_processor_id(), &sg_policy->work);
+	queue_work_on(smp_processor_id(), sugov_wq, &sg_policy->work);
 }
 
 /************************ Governor externals ***********************/
@@ -1095,8 +1097,18 @@ exit:
 
 static int __init sugov_register(void)
 {
+	int ret;
+
+	/* Frequency requests must not queue behind unrelated storage work. */
+	sugov_wq = alloc_workqueue("schedutil", WQ_HIGHPRI | WQ_MEM_RECLAIM, 0);
+	if (!sugov_wq)
+		return -ENOMEM;
+
 	sugov_exynos_init();
 
-	return cpufreq_register_governor(&schedutil_gov);
+	ret = cpufreq_register_governor(&schedutil_gov);
+	if (ret)
+		destroy_workqueue(sugov_wq);
+	return ret;
 }
 fs_initcall(sugov_register);

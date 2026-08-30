@@ -1530,6 +1530,66 @@ static int exynos_tmu_parse_ect(struct exynos_tmu_data *data)
 struct exynos_tmu_data *gpu_thermal_data;
 #endif
 
+/* Apply the CPU profile after ECT, before programming the TMU thresholds.
+ * Do not alter sensor calibration, GPU/ISP, hotplug or emergency trips.
+ */
+static int exynos9810_apply_cpu_profile(struct thermal_zone_device *tz)
+{
+	struct __thermal_zone *zone;
+	int i, previous, temperatures[8];
+
+	if (!IS_ENABLED(CONFIG_SOC_EXYNOS9810) || !tz || !tz->devdata)
+		return 0;
+	zone = tz->devdata;
+	if (strcmp(tz->type, "BIG") && strcmp(tz->type, "LITTLE"))
+		return 0;
+	if (zone->ntrips < 3 || zone->ntrips > ARRAY_SIZE(temperatures))
+		return -EINVAL;
+
+	if (!strcmp(tz->type, "BIG")) {
+		/* The existing PID controller releases its power cap below switch-on. */
+		if (zone->trips[1].type != THERMAL_TRIP_ACTIVE ||
+		    zone->trips[2].type != THERMAL_TRIP_PASSIVE ||
+		    zone->trips[0].temperature >= 65000 ||
+		    zone->trips[2].temperature <= 65000)
+			return -EINVAL;
+		zone->trips[1].temperature = 65000;
+		zone->trips[1].hysteresis = 2000;
+		return 1;
+	}
+
+	/* LITTLE uses ECT frequency steps: the cold band must not cap A55. */
+	if (zone->num_tbps < 2 || zone->trips[0].temperature >= 65000 ||
+	    zone->trips[0].type != THERMAL_TRIP_ACTIVE ||
+	    zone->trips[1].type != THERMAL_TRIP_ACTIVE ||
+	    zone->tbps[0].trip_id != 0)
+		return -EINVAL;
+
+	previous = 64000;
+	for (i = 1; i < zone->ntrips; i++) {
+		int temperature = zone->trips[i].temperature;
+
+		if (zone->trips[i].type == THERMAL_TRIP_HOT ||
+		    zone->trips[i].type == THERMAL_TRIP_CRITICAL) {
+			if (temperature <= previous)
+				return -EINVAL;
+			break;
+		}
+		if (zone->trips[i].type != THERMAL_TRIP_ACTIVE)
+			return -EINVAL;
+		temperatures[i] = i == 1 ? 65000 : max(temperature, previous + 1000);
+		previous = temperatures[i];
+	}
+	if (i == zone->ntrips)
+		return -EINVAL;
+	while (--i > 0)
+		zone->trips[i].temperature = temperatures[i];
+	zone->trips[1].hysteresis = 2000;
+	/* Exynos cooling maps a value above the real table maximum to state 0. */
+	zone->tbps[0].value = UINT_MAX;
+	return 1;
+}
+
 static int exynos_tmu_probe(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data;
@@ -1577,6 +1637,11 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 #if defined(CONFIG_ECT)
 	exynos_tmu_parse_ect(data);
 #endif
+	ret = exynos9810_apply_cpu_profile(data->tzd);
+	if (ret < 0)
+		dev_warn(&pdev->dev, "CPU 65C profile rejected: unexpected trip layout\n");
+	else if (ret > 0)
+		dev_info(&pdev->dev, "CPU thermal throttling starts at 65C\n");
 
 	data->num_probe = (readl(data->base + EXYNOS_TMU_REG_CONTROL1) >> EXYNOS_TMU_NUM_PROBE_SHIFT)
 				& EXYNOS_TMU_NUM_PROBE_MASK;

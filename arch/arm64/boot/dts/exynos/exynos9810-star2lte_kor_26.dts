@@ -10669,8 +10669,8 @@
 			device_type = "freqvar-tune";
 			shared-cpus = "0-3";
 			boost_table = <0x64 0x91ff0 0x3c 0xae8f8 0x1e 0xcb200 0x14 0xe7b08 0xa 0x101148 0x0>;
-			up_rate_limit_table = <0x5>;
-			down_rate_limit_table = <0x5>;
+			up_rate_limit_table = <0x1>;
+			down_rate_limit_table = <0x14>;
 			upscale_ratio_table = <0x50>;
 		};
 
@@ -10678,8 +10678,8 @@
 			device_type = "freqvar-tune";
 			shared-cpus = "4-7";
 			boost_table = <0x14 0xd1790 0xf 0xeadd0 0x5 0x133dc8 0x0>;
-			up_rate_limit_table = <0x5>;
-			down_rate_limit_table = <0x5>;
+			up_rate_limit_table = <0x1>;
+			down_rate_limit_table = <0x14>;
 			upscale_ratio_table = <0x32 0xeadd0 0x41 0x166a48 0x50>;
 		};
 	};
@@ -10810,7 +10810,7 @@
 			dm-type = <0x1>;
 			min-freq = <0x9eb10>;
 			max-freq = <0x1d5ba0>;
-			policy-max = <0x1d5ba0>;
+			policy-max = <0x294280>;
 			pm_qos-min-class = <0x5>;
 			pm_qos-max-class = <0x6>;
 			pm_qos-booting = <0x1d5ba0>;
@@ -10963,7 +10963,7 @@
 				};
 
 				big-switch-on {
-					temperature = <0xd6d8>;
+					temperature = <0xfde8>;
 					hysteresis = <0x7d0>;
 					type = "active";
 					linux,phandle = <0x2f9>;
@@ -11047,8 +11047,8 @@
 				};
 
 				little-alert1 {
-					temperature = <0x128e0>;
-					hysteresis = <0x1388>;
+					temperature = <0xfde8>;
+					hysteresis = <0x7d0>;
 					type = "active";
 					linux,phandle = <0x153>;
 					phandle = <0x153>;

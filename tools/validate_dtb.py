@@ -40,7 +40,7 @@ def cstring(data, offset, limit):
     return data[offset:end].decode("ascii", "replace"), end + 1
 
 
-def read_fdt_properties(fdt):
+def read_fdt_properties(fdt, include_offsets=False):
     if len(fdt) < 40 or u32be(fdt, 0) != FDT_MAGIC:
         raise ValueError("invalid FDT magic")
 
@@ -86,7 +86,8 @@ def read_fdt_properties(fdt):
                 raise ValueError("FDT property name is out of bounds")
             name, _ = cstring(fdt, strings_offset + name_offset, strings_end)
             path = "/" + "/".join(node for node in nodes if node)
-            properties.append((path, name, fdt[payload_start:payload_end]))
+            prop = (path, name, fdt[payload_start:payload_end])
+            properties.append(prop + (payload_start,) if include_offsets else prop)
             pos = align4(payload_end)
         elif token == FDT_NOP:
             continue
